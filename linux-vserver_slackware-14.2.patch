@@ -1,0 +1,208 @@
+Patch for Slackware 14.2 guest on a Linux-Vserver host
+========================================================
+by Roberto Puzzanghera - http://notes.sagredo.eu
+version: 2017.07.09
+========================================================
+
+diff -ruN rc.d-original/rc.6 rc.d/rc.6
+--- rc.d-original/rc.6	2016-03-26 17:48:37.000000000 +0100
++++ rc.d/rc.6	2016-07-09 14:08:48.470713168 +0200
+@@ -37,36 +37,6 @@
+ 		;;
+ esac
+ 
+-# Save the system time to the hardware clock using hwclock --systohc.
+-# This will also create or update the timestamps in /etc/adjtime.
+-if [ -x /sbin/hwclock ]; then
+-  # Check for a broken motherboard RTC clock (where ioports for rtc are
+-  # unknown) to prevent hwclock causing a hang:
+-  if ! grep -q " : rtc" /proc/ioports ; then
+-    CLOCK_OPT="--directisa"
+-  fi
+-  if [ /etc/adjtime -nt /etc/hardwareclock ]; then
+-    if grep -q "^LOCAL" /etc/adjtime ; then
+-      echo "Saving system time to the hardware clock (localtime)."
+-    else
+-      echo "Saving system time to the hardware clock (UTC)."
+-    fi
+-    /sbin/hwclock $CLOCK_OPT --systohc
+-  elif grep -q "^UTC" /etc/hardwareclock 2> /dev/null ; then
+-    echo "Saving system time to the hardware clock (UTC)."
+-    if [ ! -r /etc/adjtime ]; then
+-      echo "Creating system time correction file /etc/adjtime."
+-    fi
+-    /sbin/hwclock $CLOCK_OPT --utc --systohc
+-  else
+-    echo "Saving system time to the hardware clock (localtime)."
+-    if [ ! -r /etc/adjtime ]; then
+-      echo "Creating system time correction file /etc/adjtime."
+-    fi
+-    /sbin/hwclock $CLOCK_OPT --localtime --systohc
+-  fi
+-fi
+-
+ # Run any local shutdown scripts:
+ if [ -x /etc/rc.d/rc.local_shutdown ]; then
+   /etc/rc.d/rc.local_shutdown stop
+@@ -126,10 +96,6 @@
+   sleep $FUSER_DELAY
+ fi
+ 
+-# Unmount any NFS, SMB, or CIFS filesystems:
+-echo "Unmounting remote filesystems:"
+-/bin/umount -v -a -l -f -r -t nfs,smbfs,cifs | tr -d ' ' | grep successfully | sed "s/:successfullyunmounted/ has been successfully unmounted./g"
+-
+ # Try to shut down pppd:
+ PS="$(ps ax)"
+ if echo "$PS" | /bin/grep -q -w pppd ; then
+@@ -215,22 +181,11 @@
+ # Before unmounting file systems write a reboot or halt record to wtmp.
+ $shutdown_command -w
+ 
+-# Turn off swap:
+-echo "Turning off swap."
+-/sbin/swapoff -a
+-/bin/sync
+-
+ # Stop cgmanager and cgproxy:
+ if [ -x /etc/rc.d/rc.cgmanager ]; then
+   sh /etc/rc.d/rc.cgmanager stop
+ fi
+ 
+-echo "Unmounting local file systems:"
+-/bin/umount -v -a -t no,proc,sysfs | tr -d ' ' | grep successfully | sed "s/:successfullyunmounted/ has been successfully unmounted./g" 2> /dev/null
+-
+-echo "Remounting root filesystem read-only:"
+-/bin/mount -v -n -o remount,ro /
+-
+ # This never hurts:
+ /bin/sync
+ 
+@@ -288,12 +243,3 @@
+     fi
+   fi
+ fi
+-
+-# Now halt (poweroff with APM or ACPI enabled kernels) or reboot.
+-if [ "$shutdown_command" = "reboot" ]; then
+-  echo "Rebooting."
+-  /sbin/reboot
+-else
+-  /sbin/poweroff
+-fi
+-
+diff -ruN rc.d-original/rc.M rc.d/rc.M
+--- rc.d-original/rc.M	2016-05-05 06:27:00.000000000 +0200
++++ rc.d/rc.M	2016-07-09 14:14:20.090096570 +0200
+@@ -20,10 +20,6 @@
+   /sbin/ldconfig &
+ fi
+ 
+-# Screen blanks after 15 minutes idle time, and powers down in one hour
+-# if the kernel supports APM or ACPI power management:
+-/bin/setterm -blank 15 -powersave powerdown -powerdown 60
+-
+ # Set the hostname.
+ if [ -r /etc/HOSTNAME ]; then
+   /bin/hostname $(cat /etc/HOSTNAME | cut -f1 -d .)
+@@ -109,13 +105,6 @@
+   sh /etc/rc.d/rc.bluetooth start
+ fi
+ 
+-# Start wicd or networkmanager:
+-if [ -x /etc/rc.d/rc.wicd -a -x /usr/sbin/wicd ]; then
+-  sh /etc/rc.d/rc.wicd start
+-elif [ -x /etc/rc.d/rc.networkmanager ]; then
+-  sh /etc/rc.d/rc.networkmanager start
+-fi
+-
+ # Start networking daemons:
+ if [ -x /etc/rc.d/rc.inet2 ]; then
+   . /etc/rc.d/rc.inet2
+@@ -126,14 +115,6 @@
+   . /etc/rc.d/rc.scanluns
+ fi
+ 
+-# Mount any additional filesystem types that haven't already been mounted:
+-mount -a -v 2> /dev/null | grep -v -e "already mounted" -e "ignored" | cut -f 1 -d : | tr -d ' ' | while read dev ; do mount | grep "${dev} " ; done
+-
+-# Start the Control Script for automounter:
+-if [ -x /etc/rc.d/rc.autofs ]; then
+-  sh /etc/rc.d/rc.autofs start
+-fi
+-
+ # Start the Network Time Protocol daemon:
+ if [ -x /etc/rc.d/rc.ntpd ]; then
+   sh /etc/rc.d/rc.ntpd start
+@@ -153,16 +134,6 @@
+ chmod 755 / 2> /dev/null
+ chmod 1777 /tmp /var/tmp
+ 
+-# Start ACPI daemon.
+-if [ -x /etc/rc.d/rc.acpid ]; then
+-  . /etc/rc.d/rc.acpid start
+-fi
+-
+-# Enable CPU frequency scaling:
+-if [ -x /etc/rc.d/rc.cpufreq ]; then
+-  . /etc/rc.d/rc.cpufreq start
+-fi
+-
+ # Update any existing icon cache files:
+ if find /usr/share/icons -maxdepth 2 2> /dev/null | grep -q icon-theme.cache ; then
+   for theme_dir in /usr/share/icons/* ; do
+diff -ruN rc.d-original/rc.inet2 rc.d/rc.inet2
+--- rc.d-original/rc.inet2	2012-08-15 00:53:35.000000000 +0200
++++ rc.d/rc.inet2	2016-07-09 14:10:49.388841574 +0200
+@@ -16,51 +16,6 @@
+ # At this point, we are ready to talk to The World...
+ 
+ 
+-# Mount remote (NFS) filesystems:
+-if cat /etc/fstab | grep -v '^#' | grep -w nfs 1> /dev/null 2> /dev/null ; then
+-  # Start rpc.portmap, /sbin/rpc.lockd, and /sbin/rpc.statd if we find NFS
+-  # volumes defined in /etc/fstab since these will need to be running in order
+-  # to mount them.  If they are not running, attempting to mount an NFS
+-  # partition will cause mount to hang, or at least result in unreliable
+-  # operation.  Keep this in mind if you plan to mount unlisted NFS
+-  # partitions... 
+-  # If you have uncommented NFS partitions in your /etc/fstab, rc.rpc is run
+-  # whether it is set as executable or not.  If you don't want to run it,
+-  # comment the NFS partitions out in /etc/fstab or erase/rename rc.rpc.
+-  if [ -r /etc/rc.d/rc.rpc ]; then
+-    sh /etc/rc.d/rc.rpc start
+-  fi
+-  echo "Mounting remote (NFS) file systems:  /sbin/mount -a -t nfs"
+-  /sbin/mount -a -t nfs          # This may be our /usr runtime!
+-  # Show the mounted volumes:
+-  /sbin/mount -v -t nfs
+-fi
+-
+-# If /etc/rc.d/rc.rpc is executable, run it to load rpc.portmap, rpc.lockd,
+-# and rpc.statd.  This might be needed to mount NFS partitions that are not
+-# listed in /etc/fstab.  Starting this twice won't hurt as the script will
+-# check if things are already running before trying to start them.
+-if [ -x /etc/rc.d/rc.rpc ]; then
+-  sh /etc/rc.d/rc.rpc start
+-fi
+-
+-# Mount remote CIFS filesystems.  Note that where possible, using CIFS is
+-# preferred over SMBFS.  SMBFS is no longer actively maintained.
+-if cat /etc/fstab | grep -v '^#' | grep -w cifs 1> /dev/null 2> /dev/null ; then
+-  echo "Mounting remote CIFS file systems:  /sbin/mount -a -t cifs"
+-  /sbin/mount -a -t cifs
+-  # Show the mounted volumes:
+-  /sbin/mount -v -t cifs
+-fi
+-
+-# Mount remote SMB filesystems:
+-if cat /etc/fstab | grep -v '^#' | grep -w smbfs 1> /dev/null 2> /dev/null ; then
+-  echo "Mounting remote SMBFS file systems:  /sbin/mount -a -t smbfs"
+-  /sbin/mount -a -t smbfs
+-  # Show the mounted volumes:
+-  /sbin/mount -v -t smbfs
+-fi
+-
+ # Start the system logger if it is not already running (maybe because /usr
+ # is on a network partition).
+ if [ -x /etc/rc.d/rc.syslog -a -d /var/log -a ! -r /var/run/syslogd.pid ]; then

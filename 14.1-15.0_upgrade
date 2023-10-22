@@ -1,0 +1,97 @@
+# This notes are experimental. Use at your own risk.
+
+# If using slackpkg+, edit your /etc/slackpkg/blacklist and clean your blacklist
+# all SBo/alien/others packages, so that they can be overwritten by the new v. 15.0, if added.
+
+# Change your slackpg mirror to a slackware-15.0 one. Then
+
+aaa_base
+aaa_terminfo
+
+slackpkg update
+slackpkg upgrade slackpkg
+slackpkg update
+
+slackpkg remove at bc
+slackpkg install pam cracklib libpwquality libtirpc e2fsprogs elfutils ca-certificates
+
+# or if some of them are already present:
+slackpkg upgrade libtirpc elfutils ca-certificates
+
+slackpkg upgrade/install lz4
+slackpkg remove gcc-* idnkit slocate db42
+slackpkg install/upgrade gcc-11 gcc-g++ elogind man-pages man-db libidn mlocate db48 libsigsegv libcap curl
+
+slackpkg install aaa_base aaa_glibc-solibs aaa_libraries aaa_terminfo
+
+slackpkg install llvm- xxHash
+slackpkg install python # (remove flags for dbus-python and kdev-python)
+
+slackpkg upgrade-all # overwrite all /etc/rc.d/* files which will be patched later
+
+# delete all not needed scripts
+cd /etc/rc.d
+rm rc.cpufreq rc.modules* rc.inet1* rc.loop rc.0 rc.S rc.4 rc.K rc.termcap rc.inetd
+
+# apply the patch for slackware-15.0
+patch -p1 < /path/to/linux-vserver_slackware-15.0.patch
+
+# If using slackpkg+, now edit your /etc/slackpkg/blacklist and blacklist all SBo/alien pkg. Then
+
+slackpkg clean-system
+
+###################################################################################################
+
+# Changelog since current/15.0
+
+# 2022.01.06
+# +n/libmnl
+
+# 2021.12.16
+# +l/xxHash rsync prereq
+
+# 2021.10.01
+# d/gcc-11 replaces gcc-10
+#
+# 2021.07.03
+# +a/aaa_libraries
+# -a/glibc-solibs renamed to a/aaa_glibc-solibs
+# +a/aaa_glibc-solibs
+# -a/aaa_elflibs removed as it now goes into aaa_libraries
+# +l/libcap
+# +l/libsigsegv
+# +l/db48
+# -l/db42
+
+# -l/db44
+# -a/slocate
+# +a/mlocate
+# -n/idnkit
+# +l/libidn replaces idnkit
+# -l/curl
+# +n/curl
+# +ap/man-db
+# +ap/man-pages
+#
+# 2021.04.22
+# a/elogind
+# d/gcc-10 replaces gcc-9
+#
+# 2020.09.11
+# mariadb-5 prereq
+# l/lz4
+# d/gcc-9 replaces gcc-8
+
+# 2020.08.29 pam
+# a/pam
+# a/cracklib
+# a/libpwquality
+# n/libtirpc
+# a/e2fsprogs
+#
+# l/elfutils strace prereq
+
+# 2020.07.14
+# n/ca-certificates
+# ap/at removed
+# ap/bc removed

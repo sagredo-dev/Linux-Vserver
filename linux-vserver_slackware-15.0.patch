@@ -1,0 +1,391 @@
+diff -ruN rc.d-original/rc.6 rc.d/rc.6
+--- rc.d-original/rc.6	2021-11-10 22:50:54.000000000 +0100
++++ rc.d/rc.6	2021-11-28 15:16:11.899644935 +0100
+@@ -12,13 +12,6 @@
+ # Set the path.
+ PATH=/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin
+ 
+-# If we are in an lxc container, set $container to skip parts of the script.
+-# Thanks to Matteo Bernardini <ponce@slackbuilds.org> and Chris Willing for
+-# the initial work making this script lxc compatible.
+-if grep -aq container=lxc /proc/1/environ 2> /dev/null ; then
+-  container="lxc"
+-fi
+-
+ # If there are SystemV init scripts for this runlevel, run them.
+ if [ -x /etc/rc.d/rc.sysvinit ]; then
+   /etc/rc.d/rc.sysvinit
+@@ -43,40 +36,6 @@
+ 		;;
+ esac
+ 
+-# Restart init. This prevents init from hanging on to file handles for removed
+-# glibc shared libraries in the case that those were upgraded or reinstalled.
+-/sbin/telinit u
+-
+-# Save the system time to the hardware clock using hwclock --systohc.
+-# This will also create or update the timestamps in /etc/adjtime.
+-if [ -x /sbin/hwclock -a -z "$container" ]; then
+-  # Check for a broken motherboard RTC clock (where ioports for rtc are
+-  # unknown) to prevent hwclock causing a hang:
+-  if ! grep -q " : rtc" /proc/ioports ; then
+-    CLOCK_OPT="--directisa"
+-  fi
+-  if [ /etc/adjtime -nt /etc/hardwareclock ]; then
+-    if grep -q "^LOCAL" /etc/adjtime ; then
+-      echo "Saving system time to the hardware clock (localtime)."
+-    else
+-      echo "Saving system time to the hardware clock (UTC)."
+-    fi
+-    /sbin/hwclock $CLOCK_OPT --systohc
+-  elif grep -q "^UTC" /etc/hardwareclock 2> /dev/null ; then
+-    echo "Saving system time to the hardware clock (UTC)."
+-    if [ ! -r /etc/adjtime ]; then
+-      echo "Creating system time correction file /etc/adjtime."
+-    fi
+-    /sbin/hwclock $CLOCK_OPT --utc --systohc
+-  else
+-    echo "Saving system time to the hardware clock (localtime)."
+-    if [ ! -r /etc/adjtime ]; then
+-      echo "Creating system time correction file /etc/adjtime."
+-    fi
+-    /sbin/hwclock $CLOCK_OPT --localtime --systohc
+-  fi
+-fi
+-
+ # Run any local shutdown scripts:
+ if [ -x /etc/rc.d/rc.local_shutdown ]; then
+   /etc/rc.d/rc.local_shutdown stop
+@@ -123,22 +82,6 @@
+ fi
+ 
+ # Kill any processes (typically gam) that would otherwise prevent
+-# unmounting NFS volumes:
+-unset FUSER_DELAY
+-for dir in $(/bin/mount | grep -e 'type nfs ' -e 'type nfs4 ' | sed -e 's|.* on ||g' | cut -d ' ' -f 1) ; do
+-  echo "Killing processes holding NFS mount $dir open..."
+-  # Background this to prevent fuser from also blocking shutdown:
+-  /usr/bin/fuser -k -M -m "$dir" &
+-  FUSER_DELAY=5
+-done
+-# If fuser was run, let it have some delay:
+-if [ ! -z "$FUSER_DELAY" ]; then
+-  sleep $FUSER_DELAY
+-fi
+-
+-# Unmount any NFS, SMB, or CIFS filesystems:
+-echo "Unmounting remote filesystems:"
+-/bin/umount -v -a -l -f -r -t nfs,nfs4,smbfs,cifs | tr -d ' ' | grep successfully | sed "s/:successfullyunmounted/ has been successfully unmounted./g"
+ 
+ # Stop D-Bus:
+ if [ -x /etc/rc.d/rc.messagebus ]; then
+@@ -160,45 +103,11 @@
+   fi
+ fi
+ 
+-# Bring down the networking system, but first make sure that this
+-# isn't a diskless client with the / partition mounted via NFS:
+-if ! /bin/mount | /bin/grep -q -e 'on / type nfs' -e 'on / type nfs4' ; then
+-  if [ -x /etc/rc.d/rc.inet1 ]; then
+-    /etc/rc.d/rc.inet1 stop
+-  fi
+-fi
+-
+-# In case dhcpcd might have been manually started on the command line,
+-# look for the .pid file, and shut dhcpcd down if it's found:
+-if /bin/ls /etc/dhcpc/*.pid 1> /dev/null 2> /dev/null ; then
+-  /sbin/dhcpcd -k 1> /dev/null 2> /dev/null
+-  # A little time for /etc/resolv.conf and/or other files to
+-  # restore themselves.
+-  sleep 2
+-fi
+-
+-# Shut down PCMCIA devices:
+-if [ -x /etc/rc.d/rc.pcmcia -a -z "$container" ]; then
+-  /etc/rc.d/rc.pcmcia stop
+-  # The cards might need a little extra time here to deactivate:
+-  /bin/sleep 5
+-fi
+-
+ # Turn off process accounting:
+ if [ -x /sbin/accton -a -r /var/log/pacct ]; then
+   /sbin/accton off
+ fi
+ 
+-# Terminate acpid before syslog:
+-if [ -x /etc/rc.d/rc.acpid -a -r /var/run/acpid.pid -a -z "$container" ]; then # quit
+-  /etc/rc.d/rc.acpid stop
+-fi
+-
+-# Stop udev:
+-if [ -x /etc/rc.d/rc.udev -a -z "$container" ]; then
+-  /etc/rc.d/rc.udev force-stop
+-fi
+-
+ # Kill all remaining processes.
+ OMITPIDS="$(for p in $(pgrep mdmon); do echo -o $p; done)" # Don't kill mdmon
+ if [ ! "$1" = "fast" ]; then
+@@ -229,104 +138,12 @@
+   /bin/chmod 600 /etc/random-seed
+ fi
+ 
+-# Before unmounting file systems write a reboot or halt record to wtmp.
+-$shutdown_command -w
+-
+-# Turn off swap:
+-if [ ! "$(cat /proc/swaps | wc -l)" = "1" -a -z "$container" ]; then
+-  echo "Turning off swap."
+-  /sbin/swapoff -a
+-  /bin/sync
+-fi
+-
+-# Umount all tmpfs mounts except /dev/shm and under /run:
+-if [ -z "$container" ]; then
+-  cat /proc/mounts | grep " tmpfs " | grep -v -e " /run " -e " /run/" -e " /dev/shm " | while read mount ; do
+-    umount --recursive -v $(echo $mount | cut -f 2 -d ' ') 2> /dev/null
+-  done
+-fi
+-
+-# Unmount local file systems:
+-if [ -z "$container" ]; then
+-  echo "Unmounting local file systems:"
+-  /bin/umount -v -a -t no,proc,sysfs,devtmpfs,fuse.gvfsd-fuse,tmpfs
+-  # JFS needs a sync here or the / partition cannot be remounted read-only.
+-  # In spite of this, it seems that a JFS root partition will always be checked
+-  # (and found to be clean) at boot:
+-  /bin/sync
+-  echo "Remounting root filesystem read-only:"
+-  /bin/mount -v -n -o remount,ro /
+-fi
+-
+ # This never hurts:
+ /bin/sync
+ 
+-# Close any volumes opened by cryptsetup:
+-if [ -f /etc/crypttab -a -x /sbin/cryptsetup ]; then
+-  cat /etc/crypttab | grep -v "^#" | grep -v "^$" | while read line; do
+-    # NOTE: we only support LUKS formatted volumes (except for swap)!
+-    LUKS=$(echo $line | tr '\t' ' ' | tr -s ' ' | cut -f1 -d' ')
+-    DEV=$(echo $line | tr '\t' ' ' | tr -s ' ' | cut -f2 -d' ')
+-    OPTS=$(echo $line | tr '\t' ' ' | tr -s ' ' | cut -f4 -d' ')
+-    if /sbin/cryptsetup isLuks $DEV 2>/dev/null ; then
+-      echo "Locking LUKS crypt volume '${LUKS}':"
+-      /sbin/cryptsetup luksClose ${LUKS}
+-    elif echo $OPTS | grep -wq swap ; then
+-      # If any of the volumes was used as encrypted swap,
+-      # then run mkswap on the underlying device -
+-      # in case other Linux installations on this computer should use it:
+-      echo "Erasing encrypted swap '${LUKS}' and restoring normal swap on ${DEV}:"
+-      /sbin/cryptsetup remove ${LUKS}
+-      mkswap $DEV
+-    fi
+-  done
+-fi
+-
+-# Deactivate LVM volume groups:
+-if [ -z "$container" ]; then
+-  if [ -r /etc/lvmtab -o -d /etc/lvm/backup ]; then
+-    echo "Deactivating LVM volume groups:"
+-    /sbin/vgchange -an
+-  fi
+-fi
+-
+-# This never hurts again (especially since root-on-LVM always fails
+-# to deactivate the / logical volume...  but at least it was
+-# remounted as read-only first)
+-/bin/sync
+-
+ # sleep 3 fixes problems with some hard drives that don't
+ # otherwise finish syncing before reboot or poweroff
+ /bin/sleep 3
+ 
+ # This is to ensure all processes have completed on SMP machines:
+ wait
+-
+-if [ -x /sbin/genpowerd -a -z "$container" ]; then
+-  # See if this is a powerfail situation:
+-  if /bin/egrep -q "FAIL|SCRAM" /etc/upsstatus 2> /dev/null ; then
+-    # Signal UPS to shut off the inverter:
+-    /sbin/genpowerd -k
+-    if [ ! $? = 0 ]; then
+-      echo
+-      echo "There was an error signaling the UPS."
+-      echo "Perhaps you need to edit /etc/genpowerd.conf to configure"
+-      echo "the serial line and UPS type."
+-      # Wasting 15 seconds of precious power:
+-      /bin/sleep 15
+-    fi
+-  fi
+-fi
+-
+-if [ "$container" = "lxc" ]; then
+-  # Confirm successful shutdown of the container:
+-  echo "LXC container stopped."
+-fi
+-
+-# Now halt (poweroff with APM or ACPI enabled kernels) or reboot.
+-if [ "$shutdown_command" = "reboot" ]; then
+-  echo "Rebooting."
+-  /sbin/reboot
+-else
+-  /sbin/poweroff
+-fi
+diff -ruN rc.d-original/rc.M rc.d/rc.M
+--- rc.d-original/rc.M	2021-11-12 19:52:01.000000000 +0100
++++ rc.d/rc.M	2021-11-28 15:14:11.205805811 +0100
+@@ -14,36 +14,12 @@
+ # Tell the viewers what's going to happen.
+ echo "Going multiuser..."
+ 
+-# If we are in an lxc container, set $container to skip parts of the script.
+-# Thanks to Matteo Bernardini <ponce@slackbuilds.org> and Chris Willing for
+-# the initial work making this script lxc compatible.
+-if grep -aq container=lxc /proc/1/environ 2> /dev/null ; then
+-  container="lxc"
+-fi
+-
+ # Update all the shared library links:
+ if [ -x /sbin/ldconfig ]; then
+   echo "Updating shared library links:  /sbin/ldconfig &"
+   /sbin/ldconfig &
+ fi
+ 
+-# Call the setterm init script to set screen blanking and power management
+-# defaults:
+-if [ -x /etc/rc.d/rc.setterm -a -z "$container" ]; then
+-  /etc/rc.d/rc.setterm
+-fi
+-
+-# Set the hostname:
+-if [ -z "$container" ]; then
+-  if [ -r /etc/HOSTNAME ]; then
+-    /bin/hostname $(cat /etc/HOSTNAME)
+-  else
+-    # fall back on this old default:
+-    echo "darkstar.example.net" > /etc/HOSTNAME
+-    /bin/hostname $(cat /etc/HOSTNAME)
+-  fi
+-fi
+-
+ # Set the permissions on /var/log/dmesg according to whether the kernel
+ # permits non-root users to access kernel dmesg information:
+ if [ -r /proc/sys/kernel/dmesg_restrict ]; then
+@@ -58,31 +34,6 @@
+ # Save the contents of 'dmesg':
+ /bin/dmesg -s 65536 > /var/log/dmesg
+ 
+-# Initialize PCMCIA devices:
+-#
+-# NOTE: This used to be started near the top of rc.S so that PCMCIA devices
+-# could be fsck'ed along with the other drives.  This had some unfortunate
+-# side effects, however, since root isn't yet read-write, and /var might not
+-# even be mounted the .pid files can't be correctly written in /var/run and
+-# the pcmcia system can't be correctly shut down.  If you want some PCMCIA
+-# partition to be mounted at boot (or when the card is inserted) then add
+-# the appropriate lines to /etc/pcmcia/scsi.opts.
+-#
+-# Note that the stuff in /etc/pcmcia/ is only for 2.4.x kernels using
+-# 16-bit PCMCIA cards (not 32-bit Cardbus cards!).  For example, with a
+-# wireless card you might need to set options in /etc/pcmcia OR in
+-# /etc/rc.d/rc.wireless.conf, or even in /etc/rc.d/rc.inet1.conf (with
+-# extra options if needed for the encryption key, ESSID, etc.)
+-#
+-# Hopefully this situation will be unified in the future, but for now
+-# that's how it is...
+-#
+-if [ -x /etc/rc.d/rc.pcmcia -a -z "$container" ]; then
+-  /etc/rc.d/rc.pcmcia start
+-  # The cards might need a little extra time here to initialize.
+-  sleep 5
+-fi
+-
+ # Start the system logger.
+ if [ -x /etc/rc.d/rc.syslog ]; then
+   /etc/rc.d/rc.syslog start
+@@ -94,17 +45,6 @@
+   /usr/bin/fc-cache -f &
+ fi
+ 
+-# Run rc.udev again.  This will start udev if it is not already running
+-# (for example, upon return from runlevel 1), otherwise it will trigger it
+-# to look for device changes and to generate persistent rules if needed.
+-if grep -wq sysfs /proc/mounts && grep -q devtmpfs /proc/filesystems ; then
+-  if ! grep -wq nohotplug /proc/cmdline ; then
+-    if [ -x /etc/rc.d/rc.udev -a -z "$container" ]; then
+-      /etc/rc.d/rc.udev start
+-    fi
+-  fi
+-fi
+-
+ # Start the haveged entropy daemon:
+ if [ -x /etc/rc.d/rc.haveged -a -z "$container" ]; then
+   /etc/rc.d/rc.haveged start
+@@ -115,11 +55,6 @@
+   /etc/rc.d/rc.rngd start
+ fi
+ 
+-# Initialize the networking hardware.
+-if [ -x /etc/rc.d/rc.inet1 ]; then
+-  /etc/rc.d/rc.inet1
+-fi
+-
+ # Start D-Bus:
+ if [ -x /etc/rc.d/rc.messagebus ]; then
+   /etc/rc.d/rc.messagebus start
+@@ -149,14 +84,6 @@
+   /etc/rc.d/rc.inet2
+ fi
+ 
+-# Mount any additional filesystem types that haven't already been mounted:
+-mount -a -v 2> /dev/null | grep -v -e "already mounted" -e "ignored" | cut -f 1 -d : | tr -d ' ' | while read dev ; do mount | grep "${dev} " ; done
+-
+-# Start the Control Script for automounter:
+-if [ -x /etc/rc.d/rc.autofs ]; then
+-  /etc/rc.d/rc.autofs start
+-fi
+-
+ # Start the Network Time Protocol daemon:
+ if [ -x /etc/rc.d/rc.ntpd ]; then
+   /etc/rc.d/rc.ntpd start
+@@ -175,16 +102,6 @@
+ chmod 755 / 2> /dev/null
+ chmod 1777 /tmp /var/tmp
+ 
+-# Start ACPI daemon.
+-if [ -x /etc/rc.d/rc.acpid -a -z "$container" ]; then
+-  /etc/rc.d/rc.acpid start
+-fi
+-
+-# Enable CPU frequency scaling:
+-if [ -x /etc/rc.d/rc.cpufreq -a -z "$container" ]; then
+-  /etc/rc.d/rc.cpufreq start
+-fi
+-
+ # Update any existing icon cache files:
+ if find /usr/share/icons -maxdepth 2 2> /dev/null | grep -q icon-theme.cache ; then
+   for theme_dir in /usr/share/icons/* ; do
+@@ -265,24 +182,6 @@
+   /etc/rc.d/rc.atalk start
+ fi
+ 
+-# Start smartd, which monitors the status of S.M.A.R.T. compatible
+-# hard drives and reports any problems:
+-if [ -x /etc/rc.d/rc.smartd -a -z "$container" ]; then
+-  /etc/rc.d/rc.smartd start
+-fi
+-
+-# Monitor the UPS with genpowerd.
+-# To use this, uncomment this section and edit your settings in
+-# /etc/genpowerd.conf (serial device, UPS type, etc).  For more information,
+-# see "man genpowerd" or the extensive documentation in the
+-# /usr/doc/genpower-*/ directory.
+-# You'll also need to configure a similar block in /etc/rc.d/rc.6 if you want
+-# support for stopping the UPS's inverter after the machine halts.
+-#if [ -x /sbin/genpowerd -a -z "$container" ]; then
+-#  echo "Starting genpowerd daemon..."
+-#  /sbin/genpowerd
+-#fi
+-
+ # Turn on process accounting.  To enable process accounting, make sure the
+ # option for BSD process accounting is enabled in your kernel, and then
+ # create the file /var/log/pacct (touch /var/log/pacct).  By default, process

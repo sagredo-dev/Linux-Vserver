@@ -1,0 +1,271 @@
+# v. 2022.01.06
+# This is a set of packages suitable for a LAMP installation
+#
+# Some commented pkg to avoid duplicates (man will download both man-db and man-pages)
+#
+# Changelog
+#
+# 2022.01.06
+# +n/libmnl
+#
+# 2021.12.16
+# +l/xxHash rsync prereq
+#
+# 2021.11.24 python/letsencrypt stuff
+# +l/python
+# +d/rust
+# +d/llvm
+#
+# 2021.10.11
+# glibc glibc-i18n glibc-profile were missing
+# +wget2
+#
+# 2021.10.01
+# d/gcc-11 replaces gcc-10
+#
+# 2021.07.03
+# +a/aaa_libraries
+# -a/glibc-solibs renamed to a/aaa_glibc-solibs
+# +a/aaa_glibc-solibs
+# -a/aaa_elflibs removed as it now goes into aaa_libraries
+# +l/libcap
+# +l/libsigsegv
+# +l/db48
+# -l/db42
+# -l/db44
+# -a/slocate
+# +a/mlocate
+# -n/idnkit
+# +l/libidn replaces idnkit
+# -l/curl
+# +n/curl
+# +ap/man-db
+# +ap/man-pages
+#
+# 2021.04.22
+# a/elogind
+# d/gcc-10 replaces gcc-9
+#
+# 2020.09.11
+# mariadb-5 prereq
+# l/lz4
+# d/gcc-9 replaces gcc-8
+#
+# 2020.08.29 pam
+# a/pam
+# a/cracklib
+# a/libpwquality
+# n/libtirpc
+# a/e2fsprogs
+#
+# l/elfutils strace prereq
+
+# 2020.07.14
+# n/ca-certificates
+# ap/at removed
+# ap/bc removed
+
+# 2020.02.14
+# l/libarchive
+#
+# 2018.12.19
+# a/hostname
+# l/libpsl
+
+# 2018.04.17
+# ap/slackpkg
+# n/gnupg
+# php-7.2 prerequisites
+#
+# l/harfbuzz
+# l/libzip
+# n/nettle
+# d/cmake
+
+# 2018.03.14
+# d/python-* (letsencrypt stuff)
+
+# 2017.07.22
+# d/gcc-5
+# d/guile
+# l/gc
+# l/json
+# l/libffi
+# l/libunistring
+
+# 2014.11.27
+# a/lzip
+# a/procps-ng
+# d/git
+# l/curl
+# l/expat
+# l/gmp
+# l/libjpeg-turbo
+# l/libidn
+# l/libxml2
+# n/libgpg-error
+# n/openldap
+
+# Removed packages:
+#
+# a/cxxlibs (added to aaa_elflibs)
+# a/procps (replaced by procps-ng)
+# l/libjpeg (replaced by libjpeg-turbo)
+
+#[A]
+a/aaa_base
+a/aaa_glibc-solibs
+a/aaa_libraries
+a/aaa_terminfo
+a/acl
+a/attr
+a/bash
+a/bin
+a/bzip2
+a/coreutils
+a/cpio
+a/cracklib
+a/dcron
+a/dialog
+a/e2fsprogs
+a/elogind
+a/etc
+a/file
+a/findutils
+a/gawk
+a/gettext
+a/glibc-zoneinfo
+a/grep
+a/gzip
+a/hostname
+a/infozip
+a/libpwquality
+a/lzip
+a/kbd
+a/less
+a/logrotate
+a/mlocate
+a/openssl-solibs
+a/pam
+a/patch
+a/pkgtools
+a/procps-ng
+a/quota
+a/sed
+a/shadow
+a/sysklogd
+a/sysvinit
+# a/sysvinit-functions
+# a/sysvinit-scripts
+a/tar
+a/time
+a/tree
+a/utempter
+a/util-linux
+a/xz
+a/which
+
+#[AP]
+ap/diffutils
+ap/groff
+ap/lsof
+ap/man-db
+ap/man-pages
+ap/most
+ap/nano
+ap/slackpkg
+ap/sudo
+
+#[D]
+d/autoconf
+d/automake
+d/binutils
+d/bison
+d/cmake
+d/flex
+d/gcc-11
+d/gcc-g++
+d/gettext-tools
+d/git
+d/guile
+d/kernel-headers
+d/libtool
+d/llvm
+d/m4
+d/make
+d/perl
+d/pkg-config
+d/python
+d/rust
+d/strace
+
+#[L]
+l/apr
+l/db48
+l/elfutils
+l/expat
+l/freetype
+l/gc-
+l/gd-
+l/gdbm
+l/glibc
+# l/glibc-i18n
+# l/glibc-profile
+l/gmp
+l/harfbuzz
+l/json
+l/libaio
+l/libarchive
+l/libcap
+l/libidn
+#l/libidn2
+l/libjpeg-turbo
+l/libffi
+l/libmcrypt
+l/libmpc
+l/libpng
+l/libpsl
+l/libsigsegv
+l/libunistring
+l/libxml2
+l/libzip
+l/lz4
+l/lzo
+l/mpfr
+l/ncurses
+l/pcre
+l/popt
+l/python
+l/readline
+l/v4l-utils
+l/libxslt
+l/t1lib
+l/xxHash
+l/zlib
+
+#[N]
+n/ca-certificates
+n/cyrus-sasl
+n/curl
+n/gnupg-
+n/inetd
+n/iproute2
+n/iputils
+n/libgcrypt
+n/libgpg-error
+n/libtirpc
+n/libmnl
+n/mtr
+n/net-tools
+n/nettle
+n/netwatch
+n/network-scripts
+n/openldap
+n/openssh
+n/openssl
+n/rsync
+n/tcp_wrappers
+n/telnet
+n/traceroute
+n/wget
+#n/wget2
